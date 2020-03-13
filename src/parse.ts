@@ -1,6 +1,6 @@
-import { PayStellarUri } from './pay-stellar-uri';
-import { StellarUriType } from './stellar-uri';
-import { TransactionStellarUri } from './transaction-stellar-uri';
+import { StellarPayUri } from "./pay-uri"
+import { StellarUri, StellarUriType } from "./stellar-uri"
+import { StellarTransactionUri } from "./tx-uri"
 
 /**
  * Parses a SEP-0007 style URI string and returns a TransactionStellarUri or PayStellarUri, depending on the type.
@@ -11,18 +11,19 @@ import { TransactionStellarUri } from './transaction-stellar-uri';
  */
 export function parseStellarUri(
   uri: string
-): TransactionStellarUri | PayStellarUri {
+): StellarUri | StellarPayUri | StellarTransactionUri {
   if (!isStellarUri(uri)) {
-    throw new Error('Stellar URIs must start with "web+stellar:"');
+    throw Error('Stellar URIs must start with "web+stellar:"');
   }
 
   const url = new URL(uri);
   const type = url.pathname;
-  switch (url.pathname) {
+
+  switch (type) {
     case StellarUriType.Transaction:
-      return new TransactionStellarUri(url);
+      return new StellarTransactionUri(url);
     case StellarUriType.Pay:
-      return new PayStellarUri(url);
+      return new StellarPayUri(url);
     default:
       throw new Error(`Stellar URI type ${type} is not currently supported.`);
   }

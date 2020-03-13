@@ -7,6 +7,16 @@ A TypeScript/JavaScript implementation of [SEP-0007](https://github.com/stellar/
 
 Note: to use this package your in the browser it must support the [URL interface](https://developer.mozilla.org/en-US/docs/Web/API/URL#Browser_compatibility). If you would like to use it in a version not listed here consider [using a polyfill](https://www.npmjs.com/package/url-polyfill).
 
+## Changes introduced by this fork
+
+- `StellarUri` is not an abstract class anymore, but can be instantiated using any Stellar URI of any type, providing the basic getters, signature verification, etc.
+- Instances of `StellarUri` and its subclasses are immutable: Use the `StellarUriBuilder` and its subclasses to construct one
+- Instances of `StellarUri` can be signed after building them using `uri.sign()` which will also not mutate the instance, but return a signed clone of the instance
+- Subclasses have been renamed: `StellarTransactionUri` & `StellarPayUri` (sounds more natural?)
+- Easier to support custom types now: You can extend the `StellarUri` / `StellarUriBuilder` classes or just use the generic parser & builder directly
+- Many tests are missing now – need to port them
+- The API (as in the classes' methods) has been changed a lot (I'm sorry!)
+
 ## Installation
 
 ```bash
@@ -35,17 +45,22 @@ const transaction = uri.getTransaction(); // a StellarSdk.Transaction
 ### Creating and signing a transaction URI
 
 ```js
-import { TransactionStellarUri } from '@stellarguard/stellar-uri';
+import { StellarTransactionUriBuilder } from '@stellarguard/stellar-uri';
 import { Transaction } from 'stellar-sdk';
 
-const transaction = buildStellarTransaction(); // a StellarSdk.Transaction
+const signingKeypair = Keypair.fromSecret(mySecretKey);  // example.com's URI_REQUEST_SIGNING_KEY
+const transaction = buildStellarTransaction();           // a StellarSdk.Transaction
 
-const uri = TransactionStellarUri.forTransaction(transaction);
-uri.msg = 'hello from me';
-uri.originDomain = 'example.com';
-uri.addSignature(mySecretKey); // example.com's URI_REQUEST_SIGNING_KEY
+const builder = new StellarTransactionUriBuilder(transaction)
 
-uri.toString(); // web+stellar:tx?xdr=...&msg=hello+from+me&origin_domain=example.com&signature=...
+const uri = builder.build({
+  originDomain: 'example.com',
+  msg: 'hello from me'
+});
+
+const signedUri = uri.sign(signingKeypair);
+
+signedUri.toString(); // web+stellar:tx?xdr=...&msg=hello+from+me&origin_domain=example.com&signature=...
 ```
 
 ### Verifying a signature
@@ -69,12 +84,12 @@ uri.verifySignature().then(isVerified => {
 
 ### Replacements
 
-`TransactionStellarUri` supports replacing any part of the transaction by specifying a [SEP-0011 Txrep](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0011.md) path that should be replaced.
+`StellarTransactionUri` supports replacing any part of the transaction by specifying a [SEP-0011 Txrep](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0011.md) path that should be replaced.
 
-The following example shows how you might construct a `TransactionStellarUri` whose transaction source account and sequence number should be replaced, and then performs the replacement.
+The following example shows how you might construct a `StellarTransactionUri` whose transaction source account and sequence number should be replaced, and then performs the replacement.
 
 ```js
-import { TransactionStellarUri } from '@stellarguard/stellar-uri';
+import { StellarTransactionUriBuilder } from '@stellarguard/stellar-uri';
 import { Networks, Transaction } from 'stellar-sdk';
 
 // zero'd out source account and 0 for sequence number (could be anything though)
@@ -83,27 +98,35 @@ const tx = new Transaction(
   Networks.TESTNET
 );
 
-const uri = TransactionStellarUri.forTransaction(tx);
-uri.addReplacement({
+const builder = new StellarTransactionUriBuilder(transaction)
+
+builder.addReplacement({
   id: 'SRC',
   path: 'sourceAccount',
   hint: 'source account'
 });
-uri.addReplacement({ id: 'SEQ', path: 'seqNum', hint: 'sequence number' });
+
+builder.addReplacement({ id: 'SEQ', path: 'seqNum', hint: 'sequence number' });
+
+const uri = builder.build({
+  originDomain: 'example.com',
+  msg: 'hello from me'
+});
+
+const uri = StellarTransactionUri.forTransaction(tx);
 
 uri.getReplacements(); // same values that were added with addReplacement
 uri.toString(); // web+stellar:tx?xdr=...&replace=tx.sourceAccount%3ASRC%2Ctx.seqNum%3ASEQ%3BSRC%3Asource+account%2CSEQ%3Asequence+number
 
 // now perform the replacements
 // this would usually be done in a different application than the one that originally constructed it
-const newUri = uri.replace({
+const templatedTransaction = uri.getTransaction({
   SRC: 'GALUXTZIBMJTK2CFVVPCGO6LIMIQLMXHAV22LI3LU6KXA6JL4IMQB5H6',
   SEQ: '10'
 });
-const newTx = newUri.getTransaction();
 
-newTx.source; // GAL...
-newTx.sequence; // 10
+templatedTransaction.source; // GAL...
+templatedTransaction.sequence; // 10
 ```
 
 ## QR Codes
